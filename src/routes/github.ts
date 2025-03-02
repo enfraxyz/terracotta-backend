@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import crypto from "crypto";
-import { getPullRequestFiles } from "../helpers/github.js";
+import { getPullRequestFiles, scanFilesForTerraformExtensions, cloneRepository, autoPlanTerraform } from "../helpers/github.js";
 import { fetchFileFromS3 } from "../helpers/aws.js";
 
 const router = express.Router();
@@ -26,14 +26,15 @@ router.post("/webhook", express.json(), async (req: Request, res: Response): Pro
   const event = req.headers["x-github-event"] as string;
   const action = req.body.action;
 
+  console.log(req.body);
+
   if (event === "pull_request" && (action === "opened" || action === "reopened")) {
     console.log("[Terracotta] → [GitHub] pull request opened");
-
-    console.log(req.body);
 
     const owner = req.body.repository.owner.login;
     const repo = req.body.repository.name;
     const number = req.body.pull_request.number;
+    const branch = req.body.pull_request.head.ref;
 
     const files = await getPullRequestFiles(owner, repo, number);
 
@@ -45,14 +46,22 @@ router.post("/webhook", express.json(), async (req: Request, res: Response): Pro
       // Additional processing for Terracotta files can be added here
 
       // We fetch the pre-existing state file from S3, and then we'll use it to check if the PR is valid
-      const stateFile = await fetchFileFromS3(process.env.S3_BUCKET as string, process.env.S3_STATE_KEY as string);
+      // const stateFile = await fetchFileFromS3(process.env.S3_BUCKET as string, process.env.S3_STATE_KEY as string);
 
-      console.log(stateFile);
+      let terraformFiles = await scanFilesForTerraformExtensions(files);
+
+      console.log(terraformFiles.map((file) => file.filename));
+
+      const repoHtmlUrl = req.body.repository.html_url;
+
+      const repoClonePath = `./temp/${owner}/${repo}#${branch}`;
+
+      await cloneRepository(repoHtmlUrl, branch, repoClonePath);
+
+      await autoPlanTerraform(repoClonePath);
     } else {
       console.log("[Terracotta] → [GitHub] No Terraform files found in PR");
     }
-
-    console.log(files);
   }
 
   res.status(200).send("Webhook received");

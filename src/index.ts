@@ -1,8 +1,13 @@
+import connectToDatabase from "../config/database.js";
 import express, { Request, Response } from "express";
 import githubRouter from "./routes/github.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+(async () => {
+  await connectToDatabase();
+})();
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Hello, Terracotta!");
