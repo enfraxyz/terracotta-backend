@@ -1,13 +1,13 @@
-import express, { Request, Response } from "express";
-import crypto from "crypto";
-import { getPullRequestFiles, scanFilesForTerraformExtensions, cloneRepository, autoPlanTerraform } from "../helpers/github.js";
-import { fetchFileFromS3 } from "../helpers/aws.js";
+const express = require("express");
+const crypto = require("crypto");
+const { getPullRequestFiles, scanFilesForTerraformExtensions, cloneRepository, autoPlanTerraform } = require("../helpers/github");
+const { fetchFileFromS3 } = require("../helpers/aws");
 
 const router = express.Router();
 
 // Helper function to verify GitHub webhook signature
-function verifySignature(req: Request, secret: string): boolean {
-  const signature = req.headers["x-hub-signature-256"] as string;
+function verifySignature(req, secret) {
+  const signature = req.headers["x-hub-signature-256"];
   const hmac = crypto.createHmac("sha256", secret);
   const digest = Buffer.from("sha256=" + hmac.update(JSON.stringify(req.body)).digest("hex"), "utf8");
   const checksum = Buffer.from(signature, "utf8");
@@ -15,15 +15,15 @@ function verifySignature(req: Request, secret: string): boolean {
 }
 
 // Example route for handling GitHub webhooks
-router.post("/webhook", express.json(), async (req: Request, res: Response): Promise<void> => {
-  // const secret = process.env.GITHUB_WEBHOOK_SECRET as string;
+router.post("/webhook", express.json(), async (req, res) => {
+  // const secret = process.env.GITHUB_WEBHOOK_SECRET;
   // if (!verifySignature(req, secret)) {
   //   res.status(401).send("Invalid signature");
   //   return;
   // }
   console.log("[Terracotta] → [GitHub] webhook received");
 
-  const event = req.headers["x-github-event"] as string;
+  const event = req.headers["x-github-event"];
   const action = req.body.action;
 
   console.log(req.body);
@@ -38,7 +38,7 @@ router.post("/webhook", express.json(), async (req: Request, res: Response): Pro
 
     const files = await getPullRequestFiles(owner, repo, number);
 
-    // Check if any file in the PR has a .tk extension
+    // Check if any file in the PR has a .tf extension
     const hasTerraformFiles = files.some((file) => file.filename.endsWith(".tf"));
 
     if (hasTerraformFiles) {
@@ -46,7 +46,7 @@ router.post("/webhook", express.json(), async (req: Request, res: Response): Pro
       // Additional processing for Terracotta files can be added here
 
       // We fetch the pre-existing state file from S3, and then we'll use it to check if the PR is valid
-      // const stateFile = await fetchFileFromS3(process.env.S3_BUCKET as string, process.env.S3_STATE_KEY as string);
+      // const stateFile = await fetchFileFromS3(process.env.S3_BUCKET, process.env.S3_STATE_KEY);
 
       let terraformFiles = await scanFilesForTerraformExtensions(files);
 
@@ -67,4 +67,4 @@ router.post("/webhook", express.json(), async (req: Request, res: Response): Pro
   res.status(200).send("Webhook received");
 });
 
-export default router;
+module.exports = router;
