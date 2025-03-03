@@ -45,14 +45,34 @@ router.post("/signup", async (req, res) => {
       });
     });
   } catch (error) {
-    console.log("[Express] Create User Full Error", error);
+    console.log("[Terracotta] → [Users] Sign Up Error", error);
 
-    return { error: error.message, fatal: true };
+    return res.status(500).send({ error: error.message, fatal: true });
   }
 });
 
-router.post("/login", passport.authenticate("local"), (req, res) => {
-  res.json({ message: "Logged in successfully" });
+router.post("/login", passport.authenticate("local"), async (req, res) => {
+  console.log("[Terracotta] → [Users] Login called");
+
+  try {
+    if (req.user) {
+      req.session.save(async () => {
+        let user = JSON.parse(JSON.stringify(req.user));
+
+        delete user.salt;
+        delete user.hash;
+        delete user.__v;
+
+        return res.send(user);
+      });
+    } else {
+      return res.status(409).send("This email is not associated with an account. Please create an account.");
+    }
+  } catch (error) {
+    console.log("[Terracotta] → [Users] Login Error", error);
+
+    return res.status(500).send({ error: error.message, fatal: true });
+  }
 });
 
 module.exports = router;
