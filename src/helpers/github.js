@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const axios = require("axios");
 const fs = require("fs");
 const { exec } = require("child_process");
 
@@ -133,9 +134,42 @@ const runTerraformPlan = async (repoClonePath) => {
   });
 };
 
+const queryRepositories = async (accessToken) => {
+  try {
+    let page = 1;
+    let hasMore = true;
+
+    let repos = [];
+
+    while (hasMore) {
+      const response = await axios.get("https://api.github.com/user/repos", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        params: {
+          per_page: 100, // Maximum number of repos per page
+          page: page,
+        },
+      });
+
+      repos.push(...response.data);
+
+      if (response.data.length < 100) hasMore = false;
+
+      page++;
+    }
+
+    return repos;
+  } catch (error) {
+    console.log("[Terracotta] → [Users] GitHub Repositories error", error);
+    return [];
+  }
+};
+
 module.exports = {
   cloneRepository,
   getPullRequestFiles,
   scanFilesForTerraformExtensions,
   autoPlanTerraform,
+  queryRepositories,
 };

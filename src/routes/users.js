@@ -3,6 +3,7 @@ const { isAuthenticated } = require("../middleware/auth");
 const User = require("../models/User");
 const passport = require("passport");
 const axios = require("axios");
+const { queryRepositories } = require("../helpers/github");
 
 const router = express.Router();
 
@@ -125,34 +126,33 @@ router.post("/github", isAuthenticated, async (req, res) => {
   }
 });
 
+router.get("/github/orgs", isAuthenticated, async (req, res) => {
+  console.log("[Terracotta] → [Users] GitHub Organizations called");
+
+  try {
+    const user = await User.findById(req.user._id);
+
+    let repos = await queryRepositories(user.githubAccessToken);
+
+    let orgs = repos.map((repo) => repo.owner);
+
+    const uniqueOrgs = orgs.filter((org, index, self) => index === self.findIndex((u) => u.id === org.id));
+
+    return res.status(200).send(uniqueOrgs);
+  } catch (error) {
+    console.log("[Terracotta] → [Users] GitHub Organizations error", error);
+
+    return res.status(500).send({ error: error.message, fatal: true });
+  }
+});
+
 router.get("/github/repos", isAuthenticated, async (req, res) => {
   console.log("[Terracotta] → [Users] GitHub Repositories called");
 
   try {
     const user = await User.findById(req.user._id);
 
-    let page = 1;
-    let hasMore = true;
-
-    let repos = [];
-
-    while (hasMore) {
-      const response = await axios.get("https://api.github.com/user/repos", {
-        headers: {
-          Authorization: `Bearer ${user.githubAccessToken}`,
-        },
-        params: {
-          per_page: 100, // Maximum number of repos per page
-          page: page,
-        },
-      });
-
-      repos.push(...response.data);
-
-      if (response.data.length < 100) hasMore = false;
-
-      page++;
-    }
+    let repos = await queryRepositories(user.githubAccessToken);
 
     let cleanedRepos = repos.map((repo) => {
       return {
