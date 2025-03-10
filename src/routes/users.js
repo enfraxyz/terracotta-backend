@@ -182,4 +182,17 @@ router.get("/github/repos", isAuthenticated, async (req, res) => {
   }
 });
 
+router.post("/github/install", isAuthenticated, async (req, res) => {
+  console.log("[Terracotta] → [Users] GitHub Installations called");
+
+  const { installationId } = req.body;
+
+  const user = await User.findById(req.user._id);
+
+  user.githubInstallations.push(installationId);
+  await user.save();
+
+  return res.status(200).send({ user });
+});
+
 module.exports = router;

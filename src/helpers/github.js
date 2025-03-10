@@ -4,29 +4,15 @@ const axios = require("axios");
 const fs = require("fs");
 const { exec } = require("child_process");
 
-const getInstallationToken = async (owner, repo) => {
-  const { createAppAuth } = await import("@octokit/auth-app");
+const AIHelper = require("./ai");
 
-  const appId = process.env.GITHUB_APP_ID;
-  const privateKey = process.env.GITHUB_PRIVATE_KEY;
-
-  if (!appId || !privateKey) {
-    throw new Error("GITHUB_APP_ID and GITHUB_PRIVATE_KEY must be set in the environment variables.");
-  }
-
-  const auth = createAppAuth({
-    appId,
-    privateKey,
-    installationId: "61806270",
-  });
-
-  const { token } = await auth({ type: "installation" });
-
-  return token;
+exports.checkForTerraformFiles = async (files) => {
+  const terraformFiles = files.filter((file) => file.filename.endsWith(".tf"));
+  return terraformFiles;
 };
 
-// Clone a repository into a temporary directory
-const cloneRepository = async (repoUrl, branch, clonePath) => {
+// Exportable Functions
+exports.cloneRepository = async (repoUrl, branch, clonePath) => {
   if (fs.existsSync(clonePath)) {
     console.log(`Repository already exists at ${clonePath}.`);
   } else {
@@ -45,8 +31,7 @@ const cloneRepository = async (repoUrl, branch, clonePath) => {
   }
 };
 
-// Get pull request files
-const getPullRequestFiles = async (owner, repo, pullRequestNumber) => {
+exports.getPullRequestFiles = async (owner, repo, pullRequestNumber) => {
   const { Octokit } = await import("@octokit/rest");
   const token = await getInstallationToken(owner, repo);
   const octokit = new Octokit({ auth: token });
@@ -64,13 +49,12 @@ const getPullRequestFiles = async (owner, repo, pullRequestNumber) => {
   return data;
 };
 
-const scanFilesForTerraformExtensions = async (files) => {
+exports.scanFilesForTerraformExtensions = async (files) => {
   const terraformFiles = files.filter((file) => file.filename.endsWith(".tf"));
-
   return terraformFiles;
 };
 
-const autoPlanTerraform = async (repoClonePath) => {
+exports.autoPlanTerraform = async (repoClonePath) => {
   const initSuccess = await runTerraformInit(repoClonePath);
 
   console.log(`[Terracotta] → [GH | AutoPlan] Terraform init completed with success: ${initSuccess}`);
@@ -81,64 +65,15 @@ const autoPlanTerraform = async (repoClonePath) => {
 
   const planSuccess = await runTerraformPlan(repoClonePath);
 
-  console.log(`[Terracotta] → [GH | AutoPlan] Terraform plan completed with success: ${planSuccess}`);
+  console.log(`[Terracotta] → [GH | AutoPlan] Terraform plan completed with success: ${planSuccess.success}`);
 
-  if (!planSuccess) {
-    return;
-  }
+  return planSuccess;
 };
 
-// Run terraform init
-const runTerraformInit = async (repoClonePath) => {
-  console.log(`[Terracotta] → [GH | AutoPlan] Running terraform init in ${repoClonePath}...`);
-
-  return new Promise((resolve) => {
-    exec(`cd ${repoClonePath} && terraform init`, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[GH | AutoPlan] Error running terraform init: ${error.message}`);
-        resolve(false);
-        return;
-      }
-      if (stderr) {
-        console.error(`[GH | AutoPlan] Terraform init stderr: ${stderr}`);
-        resolve(false);
-        return;
-      }
-      console.log(`[GH | AutoPlan] Terraform init completed successfully`);
-      console.log(stdout);
-      resolve(true);
-    });
-  });
-};
-
-// Run terraform plan
-const runTerraformPlan = async (repoClonePath) => {
-  console.log(`[Terracotta] → [GH | AutoPlan] Running terraform plan in ${repoClonePath}...`);
-
-  return new Promise((resolve) => {
-    exec(`cd ${repoClonePath} && terraform plan -no-color`, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[GH | AutoPlan] Error running terraform plan: ${error.message}`);
-        resolve(false);
-        return;
-      }
-      if (stderr) {
-        console.error(`[GH | AutoPlan] Terraform plan stderr: ${stderr}`);
-        resolve(false);
-        return;
-      }
-      console.log(`[GH | AutoPlan] Terraform plan completed successfully`);
-      console.log(stdout);
-      resolve(true);
-    });
-  });
-};
-
-const queryRepositories = async (accessToken) => {
+exports.queryRepositories = async (accessToken) => {
   try {
     let page = 1;
     let hasMore = true;
-
     let repos = [];
 
     while (hasMore) {
@@ -166,10 +101,98 @@ const queryRepositories = async (accessToken) => {
   }
 };
 
-module.exports = {
-  cloneRepository,
-  getPullRequestFiles,
-  scanFilesForTerraformExtensions,
-  autoPlanTerraform,
-  queryRepositories,
+exports.createIssue = async (owner, repo, title, body) => {
+  const { Octokit } = await import("@octokit/rest");
+  const token = await getInstallationToken(owner, repo);
+  const octokit = new Octokit({ auth: token });
+
+  await octokit.issues.create({
+    owner,
+    repo,
+    title,
+    body,
+  });
+};
+
+exports.addCommentToPullRequest = async (owner, repo, pullRequestNumber, comment) => {
+  const { Octokit } = await import("@octokit/rest");
+  const token = await getInstallationToken(owner, repo);
+  const octokit = new Octokit({ auth: token });
+
+  await octokit.issues.createComment({
+    owner,
+    repo,
+    issue_number: pullRequestNumber,
+    body: comment,
+  });
+};
+
+/*
+ *
+ *
+ * Internal Helper Functions
+ *
+ */
+
+const getInstallationToken = async (owner, repo) => {
+  const { createAppAuth } = await import("@octokit/auth-app");
+
+  const appId = process.env.GITHUB_APP_ID;
+  const privateKey = process.env.GITHUB_PRIVATE_KEY;
+
+  if (!appId || !privateKey) {
+    throw new Error("GITHUB_APP_ID and GITHUB_PRIVATE_KEY must be set in the environment variables.");
+  }
+
+  const auth = createAppAuth({
+    appId,
+    privateKey,
+    installationId: "61806270",
+  });
+
+  const { token } = await auth({ type: "installation" });
+
+  return token;
+};
+
+const runTerraformInit = async (repoClonePath) => {
+  console.log(`[Terracotta] → [GH | AutoPlan] Running terraform init in ${repoClonePath}...`);
+
+  return new Promise((resolve) => {
+    exec(`cd ${repoClonePath} && terraform init`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[GH | AutoPlan] Error running terraform init: ${error.message}`);
+        resolve(false);
+        return;
+      }
+      if (stderr) {
+        console.error(`[GH | AutoPlan] Terraform init stderr: ${stderr}`);
+        resolve(false);
+        return;
+      }
+      console.log(`[GH | AutoPlan] Terraform init completed successfully`);
+      console.log(stdout);
+      resolve(true);
+    });
+  });
+};
+
+const runTerraformPlan = async (repoClonePath) => {
+  console.log(`[Terracotta] → [GH | AutoPlan] Running terraform plan in ${repoClonePath}...`);
+
+  return new Promise((resolve, reject) => {
+    exec(`cd ${repoClonePath} && terraform plan -no-color`, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[GH | AutoPlan] Error running terraform plan: ${error.message}`);
+        resolve({ success: false, message: error.message });
+        return;
+      }
+      if (stderr) {
+        console.warn(`[GH | AutoPlan] Terraform plan stderr: ${stderr}`);
+        resolve({ success: false, message: stderr });
+      }
+      console.log(`[GH | AutoPlan] Terraform plan completed successfully`);
+      resolve({ success: true, message: stdout });
+    });
+  });
 };

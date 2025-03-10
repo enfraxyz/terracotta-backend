@@ -7,6 +7,8 @@ const userSchema = new mongoose.Schema(
     lastName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     githubAccessToken: { type: String },
+    githubInstallations: { type: Array, default: [] },
+    threads: { type: Array, default: [] },
   },
   {
     timestamps: true,
