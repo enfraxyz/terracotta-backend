@@ -58,13 +58,11 @@ router.post("/webhook", express.json(), async (req, res) => {
     prNumber = req.body.pull_request.number;
   } else if (req.body.issue) {
     repoId = req.body.repository.id;
-    branch = req.body.issue.head.ref;
     prNumber = req.body.issue.number;
-
-    // we probably want to get
+    branch = await GithubHelper.getBranchNameFromPullRequest(req.body.repository.owner.login, req.body.repository.name, req.body.issue.number);
   }
 
-  const thread = user.threads.find((thread) => thread.repoId === repoId && thread.branch === branch && thread.prNumber === prNumber);
+  let thread = user.threads.find((thread) => thread.repoId === repoId && thread.branch === branch && thread.prNumber === prNumber);
 
   if (!thread) {
     console.log("[Terracotta] → [GitHub] No thread found for:", repoId, branch, prNumber);
@@ -125,8 +123,59 @@ router.post("/webhook", express.json(), async (req, res) => {
     const repo = req.body.repository.name;
     const number = req.body.issue.number;
     const comment = req.body.comment.body;
+    const commentAuthor = req.body.comment.user.login;
 
-    console.log(owner, repo, number, comment);
+    console.log(owner, repo, number, comment, commentAuthor);
+
+    if (commentAuthor === "try-terracotta[bot]") {
+      console.log("[Terracotta] → [GitHub] Comment is from Terracotta, ignoring");
+      return;
+    }
+
+    // ignore comments that don't contain "@try-terracotta", "tc:", or "terracotta:"
+    if (!comment.includes("@try-terracotta") && !comment.includes("tc:") && !comment.includes("terracotta:")) {
+      console.log("[Terracotta] → [GitHub] Comment does not contain '@try-terracotta', 'tc:', or 'terracotta:', ignoring");
+      return;
+    }
+
+    // if the comment is a help request, we want to add the comment to the thread
+    if (comment.includes("tc:help") || comment.includes("terracotta:help") || comment.includes("@try-terracotta help")) {
+      // generate me a help message in markdown format
+      const helpMessage = `
+      # Terracotta Help
+
+## Overview
+Terracotta is a tool designed to assist with managing and reviewing Terraform code. It provides insights into best practices, security checks, and optimizations for your infrastructure as code.
+
+## Commands
+- **\`tc:help\`**: Displays this help message.
+- **\`tc:review\`**: Initiates a review of the Terraform code in the current pull request.
+- **\`tc:plan\`**: Runs a Terraform plan and provides feedback on potential issues.
+
+## Features
+- **Terraform Code Review**: Analyze Terraform files for syntax, security, and best practices.
+- **Security Checks**: Identify overly permissive IAM roles, public S3 buckets, and other security risks.
+- **Optimization Suggestions**: Get recommendations for performance improvements and cost savings.
+- **Risk Assessment**: Categorize issues by severity to prioritize fixes.
+
+## How to Use
+1. **Attach Terraform Files**: Include \`.tf\`, \`.tfvars\`, or \`.tfstate\` files in your pull request for analysis.
+2. **Provide PR Diffs**: Share GitHub PR diffs or Terraform plan outputs for a detailed review.
+3. **Ask for Checks**: Request specific checks or optimizations using the commands above.
+      `;
+
+      await GithubHelper.addCommentToPullRequest(owner, repo, number, helpMessage);
+      return;
+    }
+
+    // We want to add the comment to the thread
+    await AIHelper.addMessageToThread(thread, comment);
+
+    // We want to get the response from the thread
+    const response = await AIHelper.runThread(thread);
+
+    // We want to add the response to the comment
+    await GithubHelper.addCommentToPullRequest(owner, repo, number, response);
   } else {
     console.log("[Terracotta] → [GitHub] Not a pull request event");
     console.log(req.body);

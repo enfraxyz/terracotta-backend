@@ -49,6 +49,27 @@ exports.getPullRequestFiles = async (owner, repo, pullRequestNumber) => {
   return data;
 };
 
+exports.getBranchNameFromPullRequest = async (owner, repo, pullRequestNumber) => {
+  const { Octokit } = await import("@octokit/rest");
+  const token = await getInstallationToken(owner, repo);
+  const octokit = new Octokit({ auth: token });
+
+  try {
+    const { data } = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: pullRequestNumber,
+    });
+
+    const branchName = data.head.ref;
+    console.log(`Branch name for PR #${pullRequestNumber}: ${branchName}`);
+    return branchName;
+  } catch (error) {
+    console.error(`Error fetching branch name for PR #${pullRequestNumber}:`, error);
+    throw error;
+  }
+};
+
 exports.scanFilesForTerraformExtensions = async (files) => {
   const terraformFiles = files.filter((file) => file.filename.endsWith(".tf"));
   return terraformFiles;
