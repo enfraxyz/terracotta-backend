@@ -105,11 +105,9 @@ router.post("/webhook", express.json(), async (req, res) => {
 
       console.log(terraformFiles.map((file) => file.filename));
 
-      const repoHtmlUrl = req.body.repository.html_url;
-
       const repoClonePath = process.env.ENV == "prod" ? `/var/data/${owner}/${repo}.${branch}` : `./temp/${owner}/${repo}.${branch}`;
 
-      await GithubHelper.cloneRepository(repoHtmlUrl, branch, repoClonePath);
+      await GithubHelper.cloneRepository(owner, repo, branch, repoClonePath, installationId);
 
       let plan = await GithubHelper.autoPlanTerraform(repoClonePath);
 
@@ -221,12 +219,12 @@ router.post("/webhook", express.json(), async (req, res) => {
       // first we need to check if the repo is already cloned
       if (!fs.existsSync(repoClonePath)) {
         console.log("[Terracotta] → [GitHub] Repo is not cloned, cloning...");
-        await GithubHelper.cloneRepository(repoHtmlUrl, branch, repoClonePath);
+        await GithubHelper.cloneRepository(owner, repo, branch, repoClonePath, installationId);
       } else {
         console.log("[Terracotta] → [GitHub] Repo is already cloned, removing...");
         fs.rmSync(repoClonePath, { recursive: true, force: true });
         console.log("[Terracotta] → [GitHub] Repo removed, cloning...");
-        await GithubHelper.cloneRepository(repoHtmlUrl, branch, repoClonePath);
+        await GithubHelper.cloneRepository(owner, repo, branch, repoClonePath, installationId);
 
         console.log("[Terracotta] → [GitHub] Repo cloned, continuing...");
       }

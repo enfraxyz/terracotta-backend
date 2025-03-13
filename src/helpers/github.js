@@ -14,12 +14,18 @@ exports.checkForTerraformFiles = async (files) => {
 };
 
 // Exportable Functions
-exports.cloneRepository = async (repoUrl, branch, clonePath) => {
+exports.cloneRepository = async (owner, repo, branch, clonePath, installationId) => {
   if (fs.existsSync(clonePath)) {
     console.log(`Repository already exists at ${clonePath}.`);
   } else {
+    const token = await getInstallationToken(owner, repo, installationId);
+    const repoUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
+
     return new Promise((resolve, reject) => {
-      exec(`git clone --branch ${branch} --single-branch ${repoUrl} ${clonePath}`, (error, stdout, stderr) => {
+      const command = `git clone --branch ${branch} --single-branch ${repoUrl} ${clonePath}`;
+      console.log(`Executing: ${command}`);
+
+      const process = exec(command, (error, stdout, stderr) => {
         if (error) {
           console.error(`Error cloning repository: ${error.message}`);
           reject(error);
@@ -31,6 +37,9 @@ exports.cloneRepository = async (repoUrl, branch, clonePath) => {
         console.log(`Clone completed: ${stdout}`);
         resolve();
       });
+
+      process.stdout.on("data", (data) => console.log(`STDOUT: ${data}`));
+      process.stderr.on("data", (data) => console.error(`STDERR: ${data}`));
     });
   }
 };
