@@ -168,7 +168,7 @@ const getInstallationToken = async (owner, repo) => {
   const auth = createAppAuth({
     appId,
     privateKey,
-    installationId: "61806270",
+    installationId: "62549465",
   });
 
   const { token } = await auth({ type: "installation" });
