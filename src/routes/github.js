@@ -62,7 +62,7 @@ router.post("/webhook", express.json(), async (req, res) => {
   } else if (req.body.issue) {
     repoId = req.body.repository.id;
     prNumber = req.body.issue.number;
-    branch = await GithubHelper.getBranchNameFromPullRequest(req.body.repository.owner.login, req.body.repository.name, req.body.issue.number);
+    branch = await GithubHelper.getBranchNameFromPullRequest(req.body.repository.owner.login, req.body.repository.name, req.body.issue.number, installationId);
   }
 
   let thread = user.threads.find((thread) => thread.repoId === repoId && thread.branch === branch && thread.prNumber === prNumber);
@@ -89,7 +89,7 @@ router.post("/webhook", express.json(), async (req, res) => {
     const number = req.body.pull_request.number;
     const branch = req.body.pull_request.head.ref;
 
-    const files = await GithubHelper.getPullRequestFiles(owner, repo, number);
+    const files = await GithubHelper.getPullRequestFiles(owner, repo, number, installationId);
 
     // Check if any file in the PR has a .tf extension
     const hasTerraformFiles = files.some((file) => file.filename.endsWith(".tf"));
@@ -115,7 +115,7 @@ router.post("/webhook", express.json(), async (req, res) => {
 
       if (plan.success) {
         const aiResponse = await AIHelper.runTerraformPlan(plan.message);
-        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse);
+        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse, installationId);
       }
     } else {
       console.log("[Terracotta] → [GitHub] No Terraform files found in PR");
@@ -150,7 +150,7 @@ router.post("/webhook", express.json(), async (req, res) => {
       const helpMessagePath = path.join(__dirname, "../../markdown/help.md");
       const helpMessage = fs.readFileSync(helpMessagePath, "utf8");
 
-      await GithubHelper.addCommentToPullRequest(owner, repo, number, helpMessage);
+      await GithubHelper.addCommentToPullRequest(owner, repo, number, helpMessage, installationId);
       return;
     }
 
@@ -159,7 +159,7 @@ router.post("/webhook", express.json(), async (req, res) => {
 
       // get pr files
 
-      const files = await GithubHelper.getPullRequestFiles(owner, repo, number);
+      const files = await GithubHelper.getPullRequestFiles(owner, repo, number, installationId);
 
       // scan files for TF code
 
@@ -172,7 +172,7 @@ router.post("/webhook", express.json(), async (req, res) => {
           "No Terraform files found in PR, please write a nice message to the user explaining that. Keep it short and simple. Note that this is not an email but a github comment inside a PR, so no need to include a signature or anything like that. Better to just be casual and friendly."
         );
 
-        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse);
+        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse, installationId);
 
         return;
       }
@@ -199,7 +199,7 @@ router.post("/webhook", express.json(), async (req, res) => {
       // we want to essentially do what we do in the pull request event, but we want to do it on command
 
       // check for TF files before we do anything
-      const files = await GithubHelper.getPullRequestFiles(owner, repo, number);
+      const files = await GithubHelper.getPullRequestFiles(owner, repo, number, installationId);
 
       // scan files for TF code
       let terraformFiles = await GithubHelper.scanFilesForTerraformExtensions(files);
@@ -211,7 +211,7 @@ router.post("/webhook", express.json(), async (req, res) => {
           "No Terraform files found in PR, please write a nice message to the user explaining that. Keep it short and simple. Note that this is not an email but a github comment inside a PR, so no need to include a signature or anything like that. Better to just be casual and friendly."
         );
 
-        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse);
+        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse, installationId);
 
         return;
       }
@@ -235,7 +235,7 @@ router.post("/webhook", express.json(), async (req, res) => {
 
       if (plan.success) {
         const aiResponse = await AIHelper.runTerraformPlan(plan.message);
-        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse);
+        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse, installationId);
       }
 
       return;
@@ -253,7 +253,7 @@ router.post("/webhook", express.json(), async (req, res) => {
     const response = await AIHelper.runThread(thread);
 
     // We want to add the response to the comment
-    await GithubHelper.addCommentToPullRequest(owner, repo, number, response);
+    await GithubHelper.addCommentToPullRequest(owner, repo, number, response, installationId);
   } else {
     console.log("[Terracotta] → [GitHub] Not a pull request event");
     console.log(req.body);

@@ -35,9 +35,9 @@ exports.cloneRepository = async (repoUrl, branch, clonePath) => {
   }
 };
 
-exports.getPullRequestFiles = async (owner, repo, pullRequestNumber) => {
+exports.getPullRequestFiles = async (owner, repo, pullRequestNumber, installationId) => {
   const { Octokit } = await import("@octokit/rest");
-  const token = await getInstallationToken(owner, repo);
+  const token = await getInstallationToken(owner, repo, installationId);
   const octokit = new Octokit({ auth: token });
 
   const { data } = await octokit.pulls.listFiles({
@@ -49,9 +49,9 @@ exports.getPullRequestFiles = async (owner, repo, pullRequestNumber) => {
   return data;
 };
 
-exports.getBranchNameFromPullRequest = async (owner, repo, pullRequestNumber) => {
+exports.getBranchNameFromPullRequest = async (owner, repo, pullRequestNumber, installationId) => {
   const { Octokit } = await import("@octokit/rest");
-  const token = await getInstallationToken(owner, repo);
+  const token = await getInstallationToken(owner, repo, installationId);
   const octokit = new Octokit({ auth: token });
 
   try {
@@ -122,9 +122,9 @@ exports.queryRepositories = async (accessToken) => {
   }
 };
 
-exports.createIssue = async (owner, repo, title, body) => {
+exports.createIssue = async (owner, repo, title, body, installationId) => {
   const { Octokit } = await import("@octokit/rest");
-  const token = await getInstallationToken(owner, repo);
+  const token = await getInstallationToken(owner, repo, installationId);
   const octokit = new Octokit({ auth: token });
 
   await octokit.issues.create({
@@ -135,9 +135,9 @@ exports.createIssue = async (owner, repo, title, body) => {
   });
 };
 
-exports.addCommentToPullRequest = async (owner, repo, pullRequestNumber, comment) => {
+exports.addCommentToPullRequest = async (owner, repo, pullRequestNumber, comment, installationId) => {
   const { Octokit } = await import("@octokit/rest");
-  const token = await getInstallationToken(owner, repo);
+  const token = await getInstallationToken(owner, repo, installationId);
   const octokit = new Octokit({ auth: token });
 
   await octokit.issues.createComment({
@@ -155,7 +155,7 @@ exports.addCommentToPullRequest = async (owner, repo, pullRequestNumber, comment
  *
  */
 
-const getInstallationToken = async (owner, repo) => {
+const getInstallationToken = async (owner, repo, installationId) => {
   const { createAppAuth } = await import("@octokit/auth-app");
 
   const appId = process.env.GITHUB_APP_ID;
@@ -168,7 +168,7 @@ const getInstallationToken = async (owner, repo) => {
   const auth = createAppAuth({
     appId,
     privateKey,
-    installationId: "62549465",
+    installationId: installationId,
   });
 
   const { token } = await auth({ type: "installation" });
