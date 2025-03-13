@@ -48,3 +48,12 @@ exports.runTerraformPlan = async (plan) => {
 
   return response.choices[0].message.content;
 };
+
+exports.simpleMessage = async (context) => {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: context }],
+  });
+
+  return response.choices[0].message.content;
+};

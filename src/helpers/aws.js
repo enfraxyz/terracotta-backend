@@ -20,6 +20,8 @@ const fetchFileFromS3 = async (bucketName, key) => {
 
     const response = await s3Client.send(command);
 
+    console.log(`[Terracotta] → [AWS] Fetched file from S3: ${bucketName}/${key}`);
+
     // Convert the response body to a Buffer
     const stream = response.Body;
     const chunks = [];

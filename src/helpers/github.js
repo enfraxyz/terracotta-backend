@@ -2,7 +2,9 @@ require("dotenv").config();
 
 const axios = require("axios");
 const fs = require("fs");
+const path = require("path");
 const { exec } = require("child_process");
+const { fetchFileFromS3 } = require("./aws");
 
 const AIHelper = require("./ai");
 
@@ -16,17 +18,19 @@ exports.cloneRepository = async (repoUrl, branch, clonePath) => {
   if (fs.existsSync(clonePath)) {
     console.log(`Repository already exists at ${clonePath}.`);
   } else {
-    console.log(`Cloning repository from ${repoUrl} to ${clonePath}...`);
-    exec(`git clone --branch ${branch} --single-branch ${repoUrl} ${clonePath}`, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Error cloning repository: ${error.message}`);
-        return;
-      }
-      if (stderr) {
-        console.error(`Git stderr: ${stderr}`);
-        return;
-      }
-      console.log(`Clone completed: ${stdout}`);
+    return new Promise((resolve, reject) => {
+      exec(`git clone --branch ${branch} --single-branch ${repoUrl} ${clonePath}`, (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Error cloning repository: ${error.message}`);
+          reject(error);
+          return;
+        }
+        if (stderr) {
+          console.error(`Git stderr: ${stderr}`);
+        }
+        console.log(`Clone completed: ${stdout}`);
+        resolve();
+      });
     });
   }
 };
@@ -35,10 +39,6 @@ exports.getPullRequestFiles = async (owner, repo, pullRequestNumber) => {
   const { Octokit } = await import("@octokit/rest");
   const token = await getInstallationToken(owner, repo);
   const octokit = new Octokit({ auth: token });
-
-  console.log(repo);
-  console.log(pullRequestNumber);
-  console.log(owner);
 
   const { data } = await octokit.pulls.listFiles({
     owner,
@@ -179,6 +179,12 @@ const getInstallationToken = async (owner, repo) => {
 const runTerraformInit = async (repoClonePath) => {
   console.log(`[Terracotta] → [GH | AutoPlan] Running terraform init in ${repoClonePath}...`);
 
+  // can we check if the repoClonePath is a valid path?
+  if (!fs.existsSync(repoClonePath)) {
+    console.error(`[GH | AutoPlan] Repository path is not valid: ${repoClonePath}`);
+    return false;
+  }
+
   return new Promise((resolve) => {
     exec(`cd ${repoClonePath} && terraform init`, (error, stdout, stderr) => {
       if (error) {
@@ -202,7 +208,7 @@ const runTerraformPlan = async (repoClonePath) => {
   console.log(`[Terracotta] → [GH | AutoPlan] Running terraform plan in ${repoClonePath}...`);
 
   return new Promise((resolve, reject) => {
-    exec(`cd ${repoClonePath} && terraform plan -no-color`, (error, stdout, stderr) => {
+    exec(`cd ${repoClonePath} && terraform plan -no-color -out=terracottaPlan`, (error, stdout, stderr) => {
       if (error) {
         console.error(`[GH | AutoPlan] Error running terraform plan: ${error.message}`);
         resolve({ success: false, message: error.message });
@@ -217,3 +223,48 @@ const runTerraformPlan = async (repoClonePath) => {
     });
   });
 };
+
+function extractS3BackendConfig(repoClonePath) {
+  // Define possible file paths to check
+  const possibleFiles = [
+    path.join(repoClonePath, "main.tf"),
+    path.join(repoClonePath, "backend.tf"),
+    // Add any other potential files that might contain backend config
+  ];
+
+  let s3Config = null;
+
+  // Check each file for backend configuration
+  for (const filePath of possibleFiles) {
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf8");
+
+      // Simple regex to extract S3 backend config
+      // This is a basic implementation and might need refinement
+      const backendMatch = content.match(/terraform\s*{[^}]*backend\s*"s3"\s*{([^}]*)}/s);
+
+      if (backendMatch && backendMatch[1]) {
+        const configText = backendMatch[1];
+
+        // Extract bucket
+        const bucketMatch = configText.match(/bucket\s*=\s*"([^"]*)"/);
+        const bucket = bucketMatch ? bucketMatch[1] : null;
+
+        // Extract key
+        const keyMatch = configText.match(/key\s*=\s*"([^"]*)"/);
+        const key = keyMatch ? keyMatch[1] : null;
+
+        // Extract region
+        const regionMatch = configText.match(/region\s*=\s*"([^"]*)"/);
+        const region = regionMatch ? regionMatch[1] : null;
+
+        if (bucket && key && region) {
+          s3Config = { bucket, key, region };
+          break; // Found a valid config, no need to check other files
+        }
+      }
+    }
+  }
+
+  return s3Config;
+}

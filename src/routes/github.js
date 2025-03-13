@@ -5,6 +5,9 @@ const { fetchFileFromS3 } = require("../helpers/aws");
 const AIHelper = require("../helpers/ai");
 const User = require("../models/User");
 
+const fs = require("fs");
+const path = require("path");
+
 const router = express.Router();
 
 // Helper function to verify GitHub webhook signature
@@ -121,6 +124,7 @@ router.post("/webhook", express.json(), async (req, res) => {
     console.log("[Terracotta] → [GitHub] Comment created");
     const owner = req.body.repository.owner.login;
     const repo = req.body.repository.name;
+    const repoHtmlUrl = req.body.repository.html_url;
     const number = req.body.issue.number;
     const comment = req.body.comment.body;
     const commentAuthor = req.body.comment.user.login;
@@ -138,37 +142,111 @@ router.post("/webhook", express.json(), async (req, res) => {
       return;
     }
 
+    // Commands Check: tc:help, tc:review, tc:plan, tc:drift
+
     // if the comment is a help request, we want to add the comment to the thread
     if (comment.includes("tc:help") || comment.includes("terracotta:help") || comment.includes("@try-terracotta help")) {
       // generate me a help message in markdown format
-      const helpMessage = `
-      # Terracotta Help
-
-## Overview
-Terracotta is a tool designed to assist with managing and reviewing Terraform code. It provides insights into best practices, security checks, and optimizations for your infrastructure as code.
-
-## Commands
-- **\`tc:help\`**: Displays this help message.
-- **\`tc:review\`**: Initiates a review of the Terraform code in the current pull request.
-- **\`tc:plan\`**: Runs a Terraform plan and provides feedback on potential issues.
-
-## Features
-- **Terraform Code Review**: Analyze Terraform files for syntax, security, and best practices.
-- **Security Checks**: Identify overly permissive IAM roles, public S3 buckets, and other security risks.
-- **Optimization Suggestions**: Get recommendations for performance improvements and cost savings.
-- **Risk Assessment**: Categorize issues by severity to prioritize fixes.
-
-## How to Use
-1. **Attach Terraform Files**: Include \`.tf\`, \`.tfvars\`, or \`.tfstate\` files in your pull request for analysis.
-2. **Provide PR Diffs**: Share GitHub PR diffs or Terraform plan outputs for a detailed review.
-3. **Ask for Checks**: Request specific checks or optimizations using the commands above.
-      `;
+      const helpMessagePath = path.join(__dirname, "../../markdown/help.md");
+      const helpMessage = fs.readFileSync(helpMessagePath, "utf8");
 
       await GithubHelper.addCommentToPullRequest(owner, repo, number, helpMessage);
       return;
     }
 
-    // We want to add the comment to the thread
+    if (comment.includes("tc:review") || comment.includes("terracotta:review") || comment.includes("@try-terracotta review")) {
+      console.log("[Terracotta] → [GitHub] Comment is a review request, implementing...");
+
+      // get pr files
+
+      const files = await GithubHelper.getPullRequestFiles(owner, repo, number);
+
+      // scan files for TF code
+
+      let terraformFiles = await GithubHelper.scanFilesForTerraformExtensions(files);
+
+      if (terraformFiles.length === 0) {
+        console.log("[Terracotta] → [GitHub] No Terraform files found in PR");
+
+        const aiResponse = await AIHelper.simpleMessage(
+          "No Terraform files found in PR, please write a nice message to the user explaining that. Keep it short and simple. Note that this is not an email but a github comment inside a PR, so no need to include a signature or anything like that. Better to just be casual and friendly."
+        );
+
+        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse);
+
+        return;
+      }
+
+      const patches = terraformFiles.map((file) => {
+        return {
+          filename: file.filename,
+          patch: file.patch,
+        };
+      });
+
+      await AIHelper.addMessageToThread(thread, "Please review the following Terraform code: " + JSON.stringify(patches));
+
+      const runThread = await AIHelper.runThread(thread);
+
+      await GithubHelper.addCommentToPullRequest(owner, repo, number, runThread);
+
+      return;
+    }
+
+    if (comment.includes("tc:plan") || comment.includes("terracotta:plan") || comment.includes("@try-terracotta plan")) {
+      console.log("[Terracotta] → [GitHub] Comment is a plan request, implementing...");
+
+      // we want to essentially do what we do in the pull request event, but we want to do it on command
+
+      // check for TF files before we do anything
+      const files = await GithubHelper.getPullRequestFiles(owner, repo, number);
+
+      // scan files for TF code
+      let terraformFiles = await GithubHelper.scanFilesForTerraformExtensions(files);
+
+      if (terraformFiles.length === 0) {
+        console.log("[Terracotta] → [GitHub] No Terraform files found in PR");
+
+        const aiResponse = await AIHelper.simpleMessage(
+          "No Terraform files found in PR, please write a nice message to the user explaining that. Keep it short and simple. Note that this is not an email but a github comment inside a PR, so no need to include a signature or anything like that. Better to just be casual and friendly."
+        );
+
+        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse);
+
+        return;
+      }
+
+      const repoClonePath = `./temp/${owner}/${repo}.${branch}`;
+
+      // first we need to check if the repo is already cloned
+      if (!fs.existsSync(repoClonePath)) {
+        console.log("[Terracotta] → [GitHub] Repo is not cloned, cloning...");
+        await GithubHelper.cloneRepository(repoHtmlUrl, branch, repoClonePath);
+      } else {
+        console.log("[Terracotta] → [GitHub] Repo is already cloned, removing...");
+        fs.rmSync(repoClonePath, { recursive: true, force: true });
+        console.log("[Terracotta] → [GitHub] Repo removed, cloning...");
+        await GithubHelper.cloneRepository(repoHtmlUrl, branch, repoClonePath);
+
+        console.log("[Terracotta] → [GitHub] Repo cloned, continuing...");
+      }
+
+      let plan = await GithubHelper.autoPlanTerraform(repoClonePath);
+
+      if (plan.success) {
+        const aiResponse = await AIHelper.runTerraformPlan(plan.message);
+        await GithubHelper.addCommentToPullRequest(owner, repo, number, aiResponse);
+      }
+
+      return;
+    }
+
+    if (comment.includes("tc:drift") || comment.includes("terracotta:drift") || comment.includes("@try-terracotta drift")) {
+      console.log("[Terracotta] → [GitHub] Comment is a drift request, implementing...");
+      return;
+    }
+
+    // If the comment is not a command, we want to add the comment to the thread
     await AIHelper.addMessageToThread(thread, comment);
 
     // We want to get the response from the thread
