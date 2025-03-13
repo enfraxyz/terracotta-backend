@@ -188,7 +188,7 @@ router.post("/webhook", express.json(), async (req, res) => {
 
       const runThread = await AIHelper.runThread(thread);
 
-      await GithubHelper.addCommentToPullRequest(owner, repo, number, runThread);
+      await GithubHelper.addCommentToPullRequest(owner, repo, number, runThread, installationId);
 
       return;
     }
