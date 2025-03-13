@@ -10,9 +10,9 @@ mkdir -p "$HOME/bin"
 # Download Terraform binary
 curl -fsSL -o "$HOME/bin/terraform.zip" "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
 
-# Unzip Terraform binary
+# Unzip Terraform binary with -o to overwrite without prompts
 cd "$HOME/bin"
-unzip terraform.zip
+unzip -o terraform.zip
 rm terraform.zip
 
 # Make Terraform executable
