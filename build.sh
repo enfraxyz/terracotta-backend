@@ -16,12 +16,19 @@ mv terraform $HOME/bin/
 echo "Setting permissions"
 chmod +x $HOME/bin/terraform
 
-echo "Updating PATH in .bashrc and .profile"
+echo "Ensuring bin directory contains Terraform"
+ls -l $HOME/bin  # Debugging - Show files in $HOME/bin
+
+echo "Updating PATH for current session"
+export PATH="$HOME/bin:$PATH"
+echo "Current PATH: $PATH"  # Debugging - Show updated PATH
+
+echo "Updating PATH permanently"
 echo 'export PATH="$HOME/bin:$PATH"' >> $HOME/.bashrc
 echo 'export PATH="$HOME/bin:$PATH"' >> $HOME/.profile
 
 echo "Verifying Terraform installation"
-$HOME/bin/terraform --version
+$HOME/bin/terraform --version  # Check if Terraform runs
 
 echo "Installing Node.js dependencies"
 npm install
