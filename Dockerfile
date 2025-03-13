@@ -2,7 +2,7 @@
 FROM node:20-bullseye AS builder
 
 # Set working directory
-WORKDIR /app
+WORKDIR /
 
 # Install required system dependencies
 RUN apt-get update && apt-get install -y \
@@ -37,7 +37,7 @@ COPY . .
 FROM node:20-bullseye AS production
 
 # Set working directory
-WORKDIR /app
+WORKDIR /
 
 # Install required system dependencies
 RUN apt-get update && apt-get install -y \
@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built application and installed dependencies from builder
-COPY --from=builder /app /app
+COPY --from=builder / /app
 
 # Copy Terraform from builder stage
 COPY --from=builder /usr/local/bin/terraform /usr/local/bin/terraform
