@@ -107,7 +107,7 @@ router.post("/webhook", express.json(), async (req, res) => {
 
       const repoHtmlUrl = req.body.repository.html_url;
 
-      const repoClonePath = `./temp/${owner}/${repo}.${branch}`;
+      const repoClonePath = process.env.ENV == "prod" ? `/var/data/${owner}/${repo}.${branch}` : `./temp/${owner}/${repo}.${branch}`;
 
       await GithubHelper.cloneRepository(repoHtmlUrl, branch, repoClonePath);
 
@@ -216,7 +216,7 @@ router.post("/webhook", express.json(), async (req, res) => {
         return;
       }
 
-      const repoClonePath = `./temp/${owner}/${repo}.${branch}`;
+      const repoClonePath = process.env.ENV == "prod" ? `/var/data/${owner}/${repo}.${branch}` : `./temp/${owner}/${repo}.${branch}`;
 
       // first we need to check if the repo is already cloned
       if (!fs.existsSync(repoClonePath)) {
