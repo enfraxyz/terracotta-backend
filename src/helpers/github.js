@@ -157,6 +157,11 @@ exports.addCommentToPullRequest = async (owner, repo, pullRequestNumber, comment
   });
 };
 
+exports.getBackendConfig = async (repoClonePath) => {
+  const backendConfig = extractS3BackendConfig(repoClonePath);
+  return backendConfig;
+};
+
 /*
  *
  *

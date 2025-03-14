@@ -4,6 +4,7 @@ const GithubHelper = require("../helpers/github");
 const { fetchFileFromS3 } = require("../helpers/aws");
 const AIHelper = require("../helpers/ai");
 const User = require("../models/User");
+const axios = require("axios");
 
 const fs = require("fs");
 const path = require("path");
@@ -135,7 +136,7 @@ router.post("/webhook", express.json(), async (req, res) => {
     }
 
     // ignore comments that don't contain "@try-terracotta", "tc:", or "terracotta:"
-    if (!comment.includes("@try-terracotta") && !comment.includes("tc:") && !comment.includes("terracotta:")) {
+    if (!comment.includes("@try-terracotta") && !comment.includes("tc:") && !comment.includes("terracotta:") && !comment.includes("et:")) {
       console.log("[Terracotta] → [GitHub] Comment does not contain '@try-terracotta', 'tc:', or 'terracotta:', ignoring");
       return;
     }
@@ -241,6 +242,53 @@ router.post("/webhook", express.json(), async (req, res) => {
 
     if (comment.includes("tc:drift") || comment.includes("terracotta:drift") || comment.includes("@try-terracotta drift")) {
       console.log("[Terracotta] → [GitHub] Comment is a drift request, implementing...");
+
+      const repoClonePath = process.env.ENV == "prod" ? `/var/data/${owner}/${repo}.${branch}` : `./temp/${owner}/${repo}.${branch}`;
+
+      // first we need to check if the repo is already cloned
+      if (!fs.existsSync(repoClonePath)) {
+        console.log("[Terracotta] → [GitHub] Repo is not cloned, cloning...");
+        await GithubHelper.cloneRepository(owner, repo, branch, repoClonePath, installationId);
+      } else {
+        console.log("[Terracotta] → [GitHub] Repo is already cloned, removing...");
+        fs.rmSync(repoClonePath, { recursive: true, force: true });
+        console.log("[Terracotta] → [GitHub] Repo removed, cloning...");
+        await GithubHelper.cloneRepository(owner, repo, branch, repoClonePath, installationId);
+
+        console.log("[Terracotta] → [GitHub] Repo cloned, continuing...");
+      }
+
+      // now we need to get the state file from S3
+      const backendConfig = await GithubHelper.getBackendConfig(repoClonePath);
+
+      console.log(backendConfig);
+
+      const stateFile = await fetchFileFromS3(backendConfig.bucket, backendConfig.key);
+
+      // we need the state file in json format
+      const stateFileJson = JSON.parse(stateFile.toString());
+
+      const driftCheckResponse = await axios.post("https://opsberry-backend-realtime-nestjs-dev.onrender.com/api/v1/terraform/drift-reports/run-drift-report", {
+        tfStateContent: stateFileJson,
+        resourceCredentials: {
+          accessKeyId: "AKIATGDYA4FEB4GFDSIK",
+          secretAccessKey: "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",
+          region: "us-west-2",
+        },
+      });
+
+      console.log(driftCheckResponse.data);
+
+      await AIHelper.addMessageToThread(
+        thread,
+        "Here is the drift report, please review it and write a summary of the changes, if any, and please include a list of the resources that are in a drifted state: " +
+          JSON.stringify(driftCheckResponse.data)
+      );
+
+      const aiDriftResponse = await AIHelper.runThread(thread);
+
+      await GithubHelper.addCommentToPullRequest(owner, repo, number, aiDriftResponse, installationId);
+
       return;
     }
 
